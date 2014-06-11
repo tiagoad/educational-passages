@@ -7,7 +7,7 @@
 // Map tiles
 var ocean_basemap = L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/Ocean_Basemap/MapServer/tile/{z}/{y}/{x}', {
     attribution: 'Tiles &copy; Esri &mdash; Sources: GEBCO, NOAA, CHS, OSU, UNH, CSUMB, National Geographic, DeLorme, NAVTEQ, and Esri',
-    maxZoom: 13
+    maxZoom: 10,
 });
 
 var wind = L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png', {
@@ -159,12 +159,12 @@ $.get(yql_url, function(data){
             div.innerHTML += '\
             <b>Launch date:</b> ' + start_time.format("DD-MM-YYYY HH:mm") + ' UTC<br> \
             <b>Last fix date:</b> ' + last_time.format("DD-MM-YYYY HH:mm") + ' UTC<br> \
-            <b>Days travelled:</b> ' + hours_travelled/24 + '<br> \
+            <b>Days travelled:</b> ' + Math.round(hours_travelled/24 * 100) / 100 + '<br> \
             <b>Distance travelled:</b> ' + Math.round(distance_travelled) + ' km <br> \
             <b>Average speed</b> ' + Math.round(distance_travelled/hours_travelled/1.852 * 100)/100 + ' knots \
             <hr> \
             <b>Distance travelled (24h):</b> ' + Math.round(distance_travelled_24) + ' km <br> \
-            <b>Average speed</b> ' + Math.round(distance_travelled_24/hours_travelled_24/1.852 * 100)/100 + ' knots \
+            <b>Average speed (24h)</b> ' + Math.round(distance_travelled_24/hours_travelled_24/1.852 * 100)/100 + ' knots \
             ';
             return div;
     };
