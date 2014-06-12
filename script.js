@@ -5,9 +5,9 @@
 **/
 
 // Map tiles
-var ocean_basemap = L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/Ocean_Basemap/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles &copy; Esri &mdash; Sources: GEBCO, NOAA, CHS, OSU, UNH, CSUMB, National Geographic, DeLorme, NAVTEQ, and Esri',
-    maxZoom: 10,
+var world = L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+    maxZoom: 10
 });
 
 var wind = L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png', {
@@ -22,13 +22,12 @@ var pressure = L.tileLayer('http://{s}.tile.openweathermap.org/map/pressure_cntr
 
 // Create map
 var map = L.map('map', {
-    layers: [ocean_basemap]
+    layers: [world]
 });
 
 // Layer types
 var overlayMaps = {
-    "Wind": wind,
-    "Pressure": pressure
+    "Wind": wind
 };
 
 L.control.layers(undefined, overlayMaps).addTo(map);
@@ -135,8 +134,8 @@ $.get(yql_url, function(data){
 
     // Add line to map
     var polyline = L.polyline(points, {
-        color: '#00002b',
-        opacity: 1,
+        color: 'white',
+        opacity: 0.2,
         lineCap: 'butt',
         weight: 2
     }).addTo(map);
