@@ -6,17 +6,12 @@
 
 // Map tiles
 var world = L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+    attribution: '<a href="http://www.esri.com/">Esri</a>',
     maxZoom: 9
 });
 
 var wind = L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png', {
-    attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
-    opacity: 0.5
-});
-
-var pressure = L.tileLayer('http://{s}.tile.openweathermap.org/map/pressure_cntr/{z}/{x}/{y}.png', {
-    attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
+    attribution: '<a href="http://openweathermap.org">OpenWeatherMap</a>',
     opacity: 0.5
 });
 
@@ -24,6 +19,8 @@ var pressure = L.tileLayer('http://{s}.tile.openweathermap.org/map/pressure_cntr
 var map = L.map('map', {
     layers: [world]
 });
+
+map.attributionControl.options.prefix += ' | <a href="https://github.com/ttsda/ttsda.github.io/tree/master/charger">GitHub</a>';
 
 // Layer types
 var overlayMaps = {
