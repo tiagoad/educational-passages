@@ -35,7 +35,7 @@ L.control.layers(undefined, overlayMaps).addTo(map);
 // Point icon
 var pointIcon = L.icon({
     iconUrl: 'img/point.svg',
-    iconSize: [11, 11]
+    iconSize: [9, 9]
 });
 
 // Boat (current location) icon
