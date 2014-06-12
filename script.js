@@ -35,17 +35,15 @@ L.control.layers(undefined, overlayMaps).addTo(map);
 
 // Point icon
 var pointIcon = L.icon({
-    iconUrl: 'point.png',
-    iconSize: [5, 5],
-    iconAnchor: [3, 3]
+    iconUrl: 'img/point.svg',
+    iconSize: [11, 11]
 });
 
 // Boat (current location) icon
 var boatIcon = L.icon({
-    iconUrl: 'icon.png',
+    iconUrl: 'img/boat.svg',
     iconSize: [16, 16]
 });
-
 
 /* 
  * Retrieve charger location data.
@@ -137,14 +135,14 @@ $.get(yql_url, function(data){
 
     // Add line to map
     var polyline = L.polyline(points, {
-        color: 'white',
+        color: '#00002b',
         opacity: 1,
         lineCap: 'butt',
-        weight: 3
+        weight: 2
     }).addTo(map);
 
-    // Fit map to bounds
-    var bounds = new L.LatLngBounds([[42.124302, -5.507809], polyline.getBounds().getSouthWest()]);
+    // Fit map to bounds (Always show Lisbon)
+    var bounds = new L.LatLngBounds([[38.726662, -9.155274], polyline.getBounds().getSouthWest()]);
     map.fitBounds(bounds, {padding: [10, 10]});
 
     // Add info to the map
