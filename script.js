@@ -59,7 +59,7 @@ $.get(yql_url, function(data){
     var points = [];
     var distance_travelled = 0;
     var distance_travelled_24 = 0;
-    var hours_travelled_24;
+    var hours_travelled_24 = 0;
 
     var last_latlng;
     $.each(data.query.results.row, function(i, row){
@@ -147,6 +147,18 @@ $.get(yql_url, function(data){
 
     var hours_travelled = last_time.diff(start_time, 'hours');
 
+    // If there are no points in the last 24h...
+    if (distance_travelled_24 !== 0)
+    {
+        distance_travelled_24 = Math.round(distance_travelled_24);
+        average_speed_24 = Math.round(distance_travelled_24/hours_travelled_24/1.852 * 100)/100;
+    }
+    else
+    {
+        distance_travelled_24 = '-';
+        average_speed_24 = '-';
+    }
+
     var legend = L.control({position: 'bottomleft'});
         legend.onAdd = function (map){
             var div = L.DomUtil.create('div', 'leaflet-bar info-box');
@@ -157,8 +169,8 @@ $.get(yql_url, function(data){
             <b>Distance travelled:</b> ' + Math.round(distance_travelled) + ' km <br> \
             <b>Average speed</b> ' + Math.round(distance_travelled/hours_travelled/1.852 * 100)/100 + ' knots \
             <hr> \
-            <b>Distance travelled (24h):</b> ' + Math.round(distance_travelled_24) + ' km <br> \
-            <b>Average speed (24h)</b> ' + Math.round(distance_travelled_24/hours_travelled_24/1.852 * 100)/100 + ' knots \
+            <b>Distance travelled (24h):</b> ' + distance_travelled_24 + ' km <br> \
+            <b>Average speed (24h)</b> ' + average_speed_24 + ' knots \
             ';
             return div;
     };
