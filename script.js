@@ -20,7 +20,7 @@ var map = L.map('map', {
     layers: [world]
 });
 
-map.attributionControl.options.prefix += ' | <a href="https://github.com/ttsda/ttsda.github.io/tree/master/charger">GitHub</a>';
+map.attributionControl.options.prefix += ' | <a href="https://github.com/ttsda/ttsda.github.io/charger">GitHub</a>';
 
 // Layer types
 var overlayMaps = {
