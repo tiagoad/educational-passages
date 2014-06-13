@@ -166,9 +166,9 @@ new Ajax.Request(yql_url, {
 
             // Add info to a popup
             pointMarker.bindPopup(
-                '<b>Date:</b> ' + point.date.format("DD-MM-YYYY HH:mm") + '<br> \
-                <b>Average Speed:</b> ' + point.average_speed.round(2) + ' knots<br> \
-                <b>Coordinates:</b> ' + point.latitude + '&#176;, ' + point.longitude + '&#176;'
+                '<b>Date:</b> ' + point.date.format("DD-MM-YYYY HH:mm") + '<br>' +
+                (point.isFirst ? '': '<b>Average Speed:</b> ' + point.average_speed.round(2) + ' knots<br>') +
+                '<b>Coordinates:</b> ' + point.latitude + '&#176;, ' + point.longitude + '&#176;'
             );
 
             // Add point to polyline and data layer
