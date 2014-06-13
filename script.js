@@ -4,7 +4,7 @@
  * Load Map
 **/
 
-// Map tiles
+// Load tiles
 var world = L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: '<a href="http://www.esri.com/">Esri</a>',
     maxZoom: 9
@@ -17,29 +17,41 @@ var wind = L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.
 
 // Create map
 var map = L.map('map', {
-    layers: [world]
+    layers: [world],
 });
+map.fitBounds([[28.11, -80.74], [42.20, -9.54]]); // Show whole north atlantic ocean at first
 
-map.attributionControl.options.prefix += ' | <a href="https://github.com/ttsda/charger">GitHub</a>';
+// Add GitHub page to the attribution
+map.attributionControl.options.prefix += ' | <a href="https://github.com/ttsda/charger">Source Code</a>';
 
-// Layer types
-var overlayMaps = {
+// Add the optional layers to a selection control
+L.control.layers(undefined, {
     "Wind": wind
+}).addTo(map);
+
+// Load icons
+var icons = {
+    // past location
+    point: L.icon({
+        iconUrl: 'img/point.svg',
+        iconSize: [9, 9]
+    }),
+
+    // current location
+    boat: L.icon({
+        iconUrl: 'img/boat.svg',
+        iconSize: [16, 16]
+    })
 };
 
-L.control.layers(undefined, overlayMaps).addTo(map);
-
-// Point icon
-var pointIcon = L.icon({
-    iconUrl: 'img/point.svg',
-    iconSize: [9, 9]
+// Create data layer and add polyline to it
+var polyline = L.polyline([], {
+    color: 'white',
+    opacity: 0.2,
+    lineCap: 'butt',
+    weight: 2
 });
-
-// Boat (current location) icon
-var boatIcon = L.icon({
-    iconUrl: 'img/boat.svg',
-    iconSize: [16, 16]
-});
+var data_layer = L.featureGroup([polyline]);
 
 /* 
  * Retrieve charger location data.
@@ -50,131 +62,163 @@ var data_url = 'http://www.nefsc.noaa.gov/drifter/drift_ep_2014_1.dat';
 var yql_query = 'SELECT * FROM csv WHERE url="' + data_url + '"';
 var yql_url = 'http://query.yahooapis.com/v1/public/yql?q=' + encodeURIComponent(yql_query) + '&format=json';
 
-var boat_esn = '995094';
-var year = 2014;
+var boat_esn = '995094'; // ID of the boat
 var current_time = moment();
 
-var raw_data = [];
-$.get(yql_url, function(data){
-    var points = [];
-    var distance_travelled = 0;
-    var distance_travelled_24 = 0;
-    var hours_travelled_24 = 0;
+var raw_data = []; // This will be populated with the raw data
+var processed_data = []; // This will be populated with the data that has been processed
 
-    var last_latlng;
-    $.each(data.query.results.row, function(i, row){
-        split_row = row.col0.replace(/\s+/g, ' ').replace(/(^\s|\s$)/g, '').split(' ');
+var stats = {
+    launch_date: 0,
+    last_date: 0,
+    logged_duration: moment.duration(0),
+    real_duration: moment.duration(0),
+    distance: 0,
+    average_speed: 0,
+    last_24h: {
+        distance: 0,
+        average_speed: 0
+    }
+};
 
-        if (split_row[1] == boat_esn) raw_data.push(split_row);
-    });
+// Download data
+new Ajax.Request(yql_url, {
+    method: 'get',
+    onSuccess: function(transport){
+        // Split downloaded data into a list
+        transport.responseJSON.query.results.row.each(function(row, i){
+            split_row = row.col0.replace(/\s+/g, ' ').replace(/(^\s|\s$)/g, '').split(' ');
 
-    $.each(raw_data, function(i, row){
-        // Increment year if the last waypoint's decimal date is larger than this
-        if (i > 0 && parseFloat(raw_data[i-1][6]) > parseFloat(raw_data[i][6])) year++;
+            // Filter out points from previous launches
+            if (split_row[1] == boat_esn) raw_data.push(split_row);
+        });
 
-        // Add year to data
-        raw_data[i].push(year);
+        // Process the data into usable variables
+        var year = 2014; // Keep track of the point's year, as it is not in the raw data
+        raw_data.each(function(raw_point, i){
+            // Increment year if the last waypoint's decimal date is larger than this
+            if (i > 0 && parseFloat(raw_data[i-1][6]) > parseFloat(raw_data[i][6])) year++;
 
-        // Add date to data
-        raw_data[i].push(moment("{0}/{1}/{2} {3}:{4}".format(raw_data[i][11], raw_data[i][2], raw_data[i][3], raw_data[i][4], raw_data[i][5])));
+            var point = processed_data[i] = {
+                latitude:  parseFloat(raw_point[8]),
+                longitude: parseFloat(raw_point[7]),
+                date:      moment("{0}/{1}/{2} {3}:{4}".format(year, raw_point[2], raw_point[3], raw_point[4], raw_point[5])),
+                isLatest:  i === raw_data.length - 1,
+                isFirst:   i === 0,
+                previous:  processed_data[i-1],
+                next:      undefined
+            };
 
-        // Add point to list
-        var latlng = L.latLng(raw_data[i][8], raw_data[i][7]);
-        var distance_from_last_point = 0;
-        var hours_from_last_point = 0;
-        var average_speed_from_last_point = 0;
+            point.latLng = L.latLng(point.latitude, point.longitude);
+            if (!point.isFirst) point.previous.next = point;
+            point.time_ago = moment.duration(current_time.diff(point.date));
+        });
 
-        points.push(latlng);
+        // Analyse the data
+        processed_data.reverse(false).each(function(point, i) {
+            /*
+             *  Fill up launch date and last date
+             */
+            if (point.isFirst)       stats.launch_date = point.date;
+            else if (point.isLatest) stats.last_date   = point.date;
 
-        if (last_latlng !== undefined)
-        {
-            // Add distance travelled to total distance
-            hours_from_last_point = (parseFloat(raw_data[i][6]) - parseFloat(raw_data[i-1][6]))*24;
-            distance_from_last_point = latlng.distanceTo(last_latlng)/1000;
-            distance_travelled += distance_from_last_point;
+            /*
+             *  Calculate deltas from last point, if this is not the first
+             */
+            point.distance_delta = point.isFirst ? 0: point.latLng.distanceTo(point.previous.latLng)/1000;
+            point.time_delta = point.isFirst ? moment.duration(0): moment.duration(point.date.diff(point.previous.date));
+            point.average_speed  = point.isFirst ? 0: kph_to_knots(point.distance_delta/point.time_delta.asHours());
 
-            // Check if this point was in the last 24h
-            var days_delta = moment.duration(current_time.diff(raw_data[i][12])).asHours();
-            if (days_delta <= 24)
+            /*
+             *  Increment global stats
+             */
+            stats.distance += point.distance_delta;
+            stats.logged_duration.add(point.time_delta);
+
+            /*
+             *  Calculate last 24h stats
+             */
+
+            // If this point was in the last 24h
+            if (point.time_ago.asHours() <= 24)
             {
-                // First point in the last 24h
-                if (distance_travelled_24 === 0)
-                {
-                    hours_travelled_24 = days_delta;
-                }
-
-                // Add distance travelled to last 24h distance
-                distance_travelled_24 += latlng.distanceTo(last_latlng)/1000;
+                stats.last_24h.distance += point.distance_delta;
             }
+            // If the next point was in the last 24h
+            else if (point.next.time_ago.asHours() <= 24)
+            {
+                stats.last_24h.distance += (1-(24/point.time_ago.asHours()))*point.distance_delta;
+            }
+        });
+        /*
+         *  Calculate remaining stats
+         */
+        stats.real_duration = moment.duration(current_time.diff(stats.launch_date));
+        stats.average_speed = kph_to_knots(stats.distance/stats.logged_duration.asHours());
+        stats.last_24h.average_speed = kph_to_knots(stats.last_24h.distance/24);
 
-            average_speed_from_last_point = Math.round(distance_from_last_point/hours_from_last_point/1.852 * 100)/100;
-        }
+        // Create markers
+        processed_data.each(function(point, i) {
+            var pointMarker = L.marker(point.latLng, {
+                // The marker will be a little boat if it's the latest point
+                icon: (point.isLatest) ? icons.boat: icons.point
+            });
 
-        // Add point to map
-        if (i+1 == raw_data.length)
-        {
-            thisPointIcon = boatIcon;
-        }
-        else
-        {
-            thisPointIcon = pointIcon;
-        }
+            // Add info to a popup
+            pointMarker.bindPopup(
+                '<b>Date:</b> ' + point.date.format("DD-MM-YYYY HH:mm") + '<br> \
+                <b>Average Speed:</b> ' + point.average_speed
+            );
 
-        var pointMarker = L.marker([raw_data[i][8], raw_data[i][7]], {icon: thisPointIcon}).addTo(map);
-        pointMarker.bindPopup(
-            '<b>Date:</b> ' + raw_data[i][12].format("DD-MM-YYYY HH:mm") + '<br> \
-            <b>Average Speed:</b> ' + average_speed_from_last_point + ' knots'
-        ).openPopup();
+            // Add point to polyline and data layer
+            polyline.addLatLng(point.latLng);
+            data_layer.addLayer(pointMarker);
+        });
 
-        last_latlng = latlng;
-    });
-
-    // Add line to map
-    var polyline = L.polyline(points, {
-        color: 'white',
-        opacity: 0.2,
-        lineCap: 'butt',
-        weight: 2
-    }).addTo(map);
-
-    // Fit map to bounds (Always show Lisbon)
-    var bounds = new L.LatLngBounds([[38.726662, -9.155274], polyline.getBounds().getSouthWest()]);
-    map.fitBounds(bounds, {padding: [10, 10]});
-
-    // Add info to the map
-    var start_time = raw_data[0][12];
-    var last_time = raw_data[raw_data.length-1][12];
-
-    var hours_travelled = last_time.diff(start_time, 'hours');
-
-    // If there are no points in the last 24h...
-    if (distance_travelled_24 !== 0)
-    {
-        distance_travelled_24 = Math.round(distance_travelled_24);
-        average_speed_24 = Math.round(distance_travelled_24/hours_travelled_24/1.852 * 100)/100;
-    }
-    else
-    {
-        distance_travelled_24 = '-';
-        average_speed_24 = '-';
-    }
-
-    var legend = L.control({position: 'bottomleft'});
+        // Add stats to the map
+        var legend = L.control({position: 'bottomleft'});
         legend.onAdd = function (map){
             var div = L.DomUtil.create('div', 'leaflet-bar info-box');
             div.innerHTML += '\
-            <b>Launch date:</b> ' + start_time.format("DD-MM-YYYY HH:mm") + ' UTC<br> \
-            <b>Last fix date:</b> ' + last_time.format("DD-MM-YYYY HH:mm") + ' UTC<br> \
-            <b>Days travelled:</b> ' + Math.round(hours_travelled/24 * 100) / 100 + '<br> \
-            <b>Distance travelled:</b> ' + Math.round(distance_travelled) + ' km <br> \
-            <b>Average speed</b> ' + Math.round(distance_travelled/hours_travelled/1.852 * 100)/100 + ' knots \
+            <b>Launch date:</b> ' + stats.launch_date.format("DD-MM-YYYY HH:mm") + ' UTC<br> \
+            <b>Last fix date:</b> ' + stats.last_date.format("DD-MM-YYYY HH:mm") + ' UTC<br> \
+            <b>Days travelled:</b> ' + stats.real_duration.asDays().round(1) + '<br> \
+            <b>Distance travelled:</b> ' + stats.distance.round() + ' km <br> \
+            <b>Average speed</b> ' + stats.average_speed.round(2) + ' knots \
             <hr> \
-            <b>Distance travelled (24h):</b> ' + distance_travelled_24 + ' km <br> \
-            <b>Average speed (24h)</b> ' + average_speed_24 + ' knots \
+            <b>Distance travelled (last 24h):</b> ' + stats.last_24h.distance.round() + ' km <br> \
+            <b>Average speed (last 24h)</b> ' + stats.last_24h.average_speed.round(2) + ' knots \
             ';
             return div;
-    };
-    legend.addTo(map);
+        };
+        legend.addTo(map);
+
+        // Fit map to polyline bounds, always showing Lisbon
+        var bounds = new L.LatLngBounds([[38.726662, -9.155274], polyline.getBounds().getSouthWest()]);
+        map.fitBounds(bounds, {padding: [10, 10]});
+
+        // Add polyline and markers to map, after the map finishes zooming
+        map.addOneTimeEventListener('zoomend', function(e) {
+            data_layer.addTo(map);
+        });
+    },
+
+    onFailure: function() {
+        alert('There was an error loading the data...');
+    },
+
+    // Fix for Prototype sending more headers than it should
+    onCreate: function(response) {
+        var t = response.transport; 
+        t.setRequestHeader = t.setRequestHeader.wrap(function(original, k, v) { 
+            if (/^(accept|accept-language|content-language)$/i.test(k)) 
+                return original(k, v); 
+            if (/^content-type$/i.test(k) && 
+                /^(application\/x-www-form-urlencoded|multipart\/form-data|text\/plain)(;.+)?$/i.test(v)) 
+                return original(k, v); 
+            return; 
+        });
+    }
 });
 
 /*
@@ -189,4 +233,15 @@ if (!String.prototype.format) {
       return typeof args[number] != 'undefined' ? args[number] : match;
     });
   };
+}
+
+// Round to decimal places
+Number.prototype.round = function(places) {
+  return !places ? Math.round(this): +(Math.round(this + "e+" + places)  + "e-" + places);
+};
+
+// km/h to knots
+function kph_to_knots(value)
+{
+    return value/1.852;
 }
