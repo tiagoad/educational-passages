@@ -62,7 +62,9 @@ var data_url = 'http://www.nefsc.noaa.gov/drifter/drift_ep_2014_1.dat';
 var yql_query = 'SELECT * FROM csv WHERE url="' + data_url + '"';
 var yql_url = 'http://query.yahooapis.com/v1/public/yql?q=' + encodeURIComponent(yql_query) + '&format=json';
 
+var launch_year = 2014;
 var boat_esn = '995094'; // ID of the boat
+
 var current_time = moment();
 
 var raw_data = []; // This will be populated with the raw data
@@ -94,7 +96,7 @@ new Ajax.Request(yql_url, {
         });
 
         // Process the data into usable variables
-        var year = 2014; // Keep track of the point's year, as it is not in the raw data
+        var year = launch_year; // Keep track of the point's year, as it is not in the raw data
         raw_data.each(function(raw_point, i){
             // Increment year if the last waypoint's decimal date is larger than this
             if (i > 0 && parseFloat(raw_data[i-1][6]) > parseFloat(raw_data[i][6])) year++;
@@ -145,7 +147,7 @@ new Ajax.Request(yql_url, {
                 stats.last_24h.distance += point.distance_delta;
             }
             // If the next point was in the last 24h
-            else if (point.next.time_ago.asHours() <= 24)
+            else if (!point.isFirst && point.previous.time_ago.asHours() <= 24)
             {
                 stats.last_24h.distance += (1-(24/point.time_ago.asHours()))*point.distance_delta;
             }
@@ -195,13 +197,12 @@ new Ajax.Request(yql_url, {
         legend.addTo(map);
 
         // Fit map to polyline bounds, always showing Lisbon
-        var bounds = new L.LatLngBounds([[38.726662, -9.155274], polyline.getBounds().getSouthWest()]);
+        var lisbon_latLng = L.latLng([38.726662, -9.155274]);
+        var bounds = polyline.getBounds().extend(lisbon_latLng);
         map.fitBounds(bounds, {padding: [10, 10]});
 
-        // Add polyline and markers to map, after the map finishes zooming
-        map.addOneTimeEventListener('zoomend', function(e) {
-            data_layer.addTo(map);
-        });
+        // Add polyline and markers to map
+        data_layer.addTo(map);
     },
 
     onFailure: function() {
