@@ -207,7 +207,7 @@ new Ajax.Request(yql_url, {
             <b>Days travelled:</b> ' + stats.real_duration.asDays().round(1) + '<br> \
             <b>Distance travelled:</b> ' + stats.distance.round() + ' km <br> \
             <b>Average speed</b> ' + stats.average_speed.round(2) + ' knots <br>\
-            <b>Maximum speed</b> ' + stats.maximum_speed.speed.round(2) + ' knots \
+            <b>Maximum speed</b> <span title="' + stats.maximum_speed.point.date.format("DD-MM-YYYY HH:mm") + '">' + stats.maximum_speed.speed.round(2) + '</span> knots \
             <hr> \
             <b>Distance travelled (last 24h):</b> ' + stats.last_24h.distance.round() + ' km <br> \
             <b>Average speed (last 24h)</b> ' + stats.last_24h.average_speed.round(2) + ' knots \
@@ -215,7 +215,7 @@ new Ajax.Request(yql_url, {
             return div;
         };
         legend.addTo(map);
-        
+
         // Fit map to polyline bounds, always showing Lisbon
         var lisbon_latLng = L.latLng([38.726662, -9.155274]);
         var bounds = polyline.getBounds().extend(lisbon_latLng);
