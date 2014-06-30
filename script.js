@@ -10,6 +10,11 @@ var world = L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/Wor
     maxZoom: 9
 });
 
+var admin_bounds = L.tileLayer('http://openmapsurfer.uni-hd.de/tiles/adminb/x={x}&y={y}&z={z}', {
+    attribution: '<a href="http://openstreetmap.org">OpenStreetMap</a>',
+    maxZoom: 9,
+});
+
 var wind = L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png', {
     attribution: '<a href="http://openweathermap.org">OpenWeatherMap</a>',
     opacity: 0.5
@@ -26,6 +31,7 @@ map.attributionControl.options.prefix += ' | <a href="https://github.com/ttsda/c
 
 // Add the optional layers to a selection control
 L.control.layers(undefined, {
+    "Administration Boundaries": admin_bounds,
     "Wind": wind
 }).addTo(map);
 
@@ -77,6 +83,10 @@ var stats = {
     real_duration: moment.duration(0),
     distance: 0,
     average_speed: 0,
+    maximum_speed: {
+        speed: 0,
+        point: undefined
+    },
     last_24h: {
         distance: 0,
         average_speed: 0
@@ -131,6 +141,12 @@ new Ajax.Request(yql_url, {
             point.time_delta = point.isFirst ? moment.duration(0): moment.duration(point.date.diff(point.previous.date));
             point.average_speed  = point.isFirst ? 0: kph_to_knots(point.distance_delta/point.time_delta.asHours());
 
+            if (point.average_speed > stats.maximum_speed.speed)
+            {
+                stats.maximum_speed.speed = point.average_speed;
+                stats.maximum_speed.point = point;
+            }
+
             /*
              *  Increment global stats
              */
@@ -166,6 +182,9 @@ new Ajax.Request(yql_url, {
                 icon: (point.isLatest) ? icons.boat: icons.point
             });
 
+            // Add marker to point object
+            point.marker = pointMarker;
+
             // Add info to a popup
             pointMarker.bindPopup(
                 '<b>Date:</b> ' + point.date.format("DD-MM-YYYY HH:mm") + '<br>' +
@@ -181,13 +200,14 @@ new Ajax.Request(yql_url, {
         // Add stats to the map
         var legend = L.control({position: 'bottomleft'});
         legend.onAdd = function (map){
-            var div = L.DomUtil.create('div', 'leaflet-bar info-box');
+            var div = L.DomUtil.create('div', 'info-box');
             div.innerHTML += '\
             <b>Launch date:</b> ' + stats.launch_date.format("DD-MM-YYYY HH:mm") + ' UTC<br> \
             <b>Last fix date:</b> ' + stats.last_date.format("DD-MM-YYYY HH:mm") + ' UTC<br> \
             <b>Days travelled:</b> ' + stats.real_duration.asDays().round(1) + '<br> \
             <b>Distance travelled:</b> ' + stats.distance.round() + ' km <br> \
-            <b>Average speed</b> ' + stats.average_speed.round(2) + ' knots \
+            <b>Average speed</b> ' + stats.average_speed.round(2) + ' knots <br>\
+            <b>Maximum speed</b> ' + stats.maximum_speed.speed.round(2) + ' knots \
             <hr> \
             <b>Distance travelled (last 24h):</b> ' + stats.last_24h.distance.round() + ' km <br> \
             <b>Average speed (last 24h)</b> ' + stats.last_24h.average_speed.round(2) + ' knots \
@@ -195,7 +215,7 @@ new Ajax.Request(yql_url, {
             return div;
         };
         legend.addTo(map);
-
+        
         // Fit map to polyline bounds, always showing Lisbon
         var lisbon_latLng = L.latLng([38.726662, -9.155274]);
         var bounds = polyline.getBounds().extend(lisbon_latLng);
