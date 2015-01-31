@@ -22,7 +22,7 @@ var transmitters = [
 ];
 
 // Load tiles
-var world = L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+var world = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: '<a href="http://www.esri.com/">Esri</a>',
     maxZoom: 9
 });
@@ -90,7 +90,7 @@ for (var i = 0; i < transmitters.length; ++i) {
     **/
     // ID ESN MONTH DAY HOUR MINUTE DECIMAL_DATE LONGITUDE LATITUDE ? ?
     var yql_query = 'SELECT * FROM csv WHERE url="' + transmitter.url + '"';
-    var yql_url = 'http://query.yahooapis.com/v1/public/yql?q=' + encodeURIComponent(yql_query) + '&format=json';
+    var yql_url = 'https://query.yahooapis.com/v1/public/yql?q=' + encodeURIComponent(yql_query) + '&format=json';
 
     // Download data
     new Ajax.Request(yql_url, {
