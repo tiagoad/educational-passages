@@ -27,8 +27,9 @@ var world = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Wo
     maxZoom: 9
 });
 
-var admin_bounds = L.tileLayer('http://openmapsurfer.uni-hd.de/tiles/adminb/x={x}&y={y}&z={z}', {
-    attribution: '<a href="http://openstreetmap.org">OpenStreetMap</a>',
+var admin_bounds = L.tileLayer('http://otile{s}.mqcdn.com/tiles/1.0.0/hyb/{z}/{x}/{y}.png', {
+    attribution: '<a href="http://www.mapquest.com/">MapQuest</a>',
+    subdomains: [1, 2, 3, 4],
     maxZoom: 9,
 });
 
