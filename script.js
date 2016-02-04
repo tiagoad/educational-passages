@@ -34,14 +34,13 @@ var drifters = [
         description: 'Leva Portugal ao Mundo',
         esns: ['995664', '945770'],
         interval: [moment('2016-01-27T08:00:00'), 0],
-        enabled: false
+        enabled: true
     },
     {
         name: 'Charger',
         description: '',
         esns: ['995094', '1236780'],
-        interval: [moment('2014-05-30'), 0],
-        enabled: true
+        interval: [moment('2014-05-30'), 0]
     }
 ]
 
@@ -267,8 +266,7 @@ function displayData(rawData)
         });
 
         // Add the polyline bounds to the drifter metadata
-        // The bounds always include Lisbon
-        drifter.bounds = polyline.getBounds().extend(L.latLng([38.726662, -9.155274]));
+        drifter.bounds = polyline.getBounds();
 
         if (drifter.enabled)
         {
