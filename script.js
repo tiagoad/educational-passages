@@ -1,312 +1,360 @@
 /*jshint multistr: true */
+"use strict";
 
-/*
- * Load Map
-**/
 
-// List of transmitters
-var transmitters = [
+// Data sources to be aggregated
+var dataSources = [
     {
-        name: 'New GPS',
         url: 'http://www.nefsc.noaa.gov/drifter/drift_ep_2014_1.dat',
-        esn: '995094',
         year: 2014,
-        enabled: true
+        esns: ['995094']
     },
     {
-        name: 'Old GPS',
         url: 'http://www.nefsc.noaa.gov/drifter/drift_ep_2012_1.dat',
-        esn: '1236780',
-        year: 2013
+        year: 2013,
+        esns: ['1236780']
+    },
+    {
+        url: 'http://www.nefsc.noaa.gov/drifter/drift_ep_2013_2.dat',
+        year: 2013,
+        esns: ['995664']
+    },
+    {
+        url: 'http://www.nefsc.noaa.gov/drifter/drift_ep_2016_1.dat',
+        year: 2016,
+        esns: ['945770']
     }
 ];
 
-// Load tiles
-var world = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: '<a href="http://www.esri.com/">Esri</a>',
-    maxZoom: 9
-});
+// Physical drifters
+// Each object will also have a "layer" key
+var drifters = [
+    {
+        name: 'WEST',
+        description: 'Leva Portugal ao Mundo',
+        esns: ['995664', '945770'],
+        interval: [moment('2016-01-27T08:00:00'), 0],
+        enabled: false
+    },
+    {
+        name: 'Charger',
+        description: '',
+        esns: ['995094', '1236780'],
+        interval: [moment('2014-05-30'), 0],
+        enabled: true
+    }
+]
 
-var admin_bounds = L.tileLayer('http://otile{s}.mqcdn.com/tiles/1.0.0/hyb/{z}/{x}/{y}.png', {
-    attribution: '<a href="http://www.mapquest.com/">MapQuest</a>',
-    subdomains: [1, 2, 3, 4],
-    maxZoom: 9,
-});
+// Map globals
+var map = L.map('map');
+var legend = L.control({position: 'bottomleft'});
+var drifterSelector = L.control.layers(undefined, undefined, {collapsed: false});
 
-var wind = L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png', {
-    attribution: '<a href="http://openweathermap.org">OpenWeatherMap</a>',
-    opacity: 0.5
-});
+// Templates
+var templates = {
+    popup: _.template("<b>Date:</b> <%- date.format('YYYY-MM-DD HH:mm:ss') %> <br>" +
+        "<b>Average Speed:</b> <%- speed.toFixed(2) %> <br>" +
+        "<b>Coordinates:</b> <%- latLng.lat %>&#176;, <%- latLng.lng %>&#176;"),
 
-// Create map
-var map = L.map('map', {
-    layers: [world],
-});
-map.fitBounds([[28.11, -80.74], [42.20, -9.54]]); // Show whole north atlantic ocean at first
-
-// Add GitHub page to the attribution
-map.attributionControl.options.prefix += ' | <a href="https://github.com/ttsda/charger">Source Code</a>';
-
-// Load icons
-var icons = {
-    // past location
-    point: L.icon({
-        iconUrl: 'img/point.svg',
-        iconSize: [9, 9]
-    }),
-
-    // current location
-    boat: L.icon({
-        iconUrl: 'img/boat.svg',
-        iconSize: [16, 16]
-    })
-};
-
-var data_layers = L.control.layers(undefined, undefined, {collapsed: false});
-
-var visible_legend = L.control({position: 'bottomleft'});
-visible_legend.onAdd = function (map) {
-    return L.DomUtil.create('div', 'info-box');
-};
-visible_legend.update = function (html) {
-    this._container.innerHTML = html;
+    legend: _.template(
+        "<b><%- name %></b> <br>" +
+        "<%- description %> <hr>" +
+        "<b>Launch date:</b> <%- stats.launchDate.format('YYYY-MM-DD HH:mm:ss') %> <br>" +
+        "<b>Last fix date:</b> <%- stats.lastDate.format('YYYY-MM-DD HH:mm:ss') %> <br>" +
+        "<b>Days travelled:</b> <%- stats.duration.asDays().toFixed() %> <br>" +
+        "<b>Distance travelled:</b> <%- stats.distance.toFixed() %> km<br>" +
+        "<b>Maximum speed:</b> <%- stats.maximumSpeed.speed.toFixed(2) %><br>")
 }
-visible_legend.addTo(map);
-visible_legend.update('Loading...');
 
-for (var i = 0; i < transmitters.length; ++i) {
-    var transmitter = transmitters[i];
-    var polyline = L.polyline([], {
-        color: 'white',
-        opacity: 0.2,
-        lineCap: 'butt',
-        weight: 2
-    });
-    var data_layer = L.featureGroup([polyline]);
-    data_layers.addBaseLayer(data_layer, transmitter.name);
+/**
+ * Loads the data from NOAA
+ */
+function loadData()
+{
+    // Object holding a key for each ESN.
+    // The value is a list of objects with the following keys
+    // timestamp (int)
+    // latLng (L.latLng)
+    var rawData = {};
 
-    /* 
-     * Retrieve location data.
-     * I am using YQL as a proxy because the noaa server does not allow cross-server requests.
-    **/
-    // ID ESN MONTH DAY HOUR MINUTE DECIMAL_DATE LONGITUDE LATITUDE ? ?
-    var yql_query = 'SELECT * FROM csv WHERE url="' + transmitter.url + '"';
-    var yql_url = 'https://query.yahooapis.com/v1/public/yql?q=' + encodeURIComponent(yql_query) + '&format=json';
+    // Number of sources to be loaded
+    var sourcesWaiting = dataSources.length;
 
-    // Download data
-    new Ajax.Request(yql_url, {
-        method: 'get',
-        onSuccess: function (i, transmitter, polyline, data_layer) {
-            return function(transport) {
-                var current_time = moment();
+    _.each(dataSources, function(dataSource) {
+        /*
+         * Retrieve location data.
+         * I am using YQL as a proxy because the noaa server does not allow cross-server requests.
+        **/
+        // ID ESN MONTH DAY HOUR MINUTE DECIMAL_DATE LONGITUDE LATITUDE ? ?
+        var yqlQuery = 'SELECT * FROM csv WHERE url="' + dataSource.url + '"';
+        var yqlUrl = 'https://query.yahooapis.com/v1/public/yql?q=' + encodeURIComponent(yqlQuery) + '&format=json';
 
-                var raw_data = []; // This will be populated with the raw data
-                var processed_data = []; // This will be populated with the data that has been processed
+        // Download data
+        aja()
+            .url(yqlUrl)
+            .on('success', function(json) {
+                var rows = json.query.results.row;
 
-                var stats = {
-                    launch_date: 0,
-                    last_date: 0,
-                    logged_duration: moment.duration(0),
-                    real_duration: moment.duration(0),
-                    distance: 0,
-                    average_speed: 0,
-                    maximum_speed: {
-                        speed: 0,
-                        point: undefined
-                    },
-                    last_24h: {
-                        distance: 0,
-                        average_speed: 0
-                    }
-                };
+                var lastRow;
+                var year;
+                _.each(rows, function(rawRow) {
+                    var row = rawRow.col0.replace(/\s+/g, ' ').replace(/(^\s|\s$)/g, '').split(' ');
 
-                // Split downloaded data into a list
-                transport.responseJSON.query.results.row.each(function(row, i){
-                    split_row = row.col0.replace(/\s+/g, ' ').replace(/(^\s|\s$)/g, '').split(' ');
+                    if (!lastRow || lastRow[0] != row[0])
+                        year = dataSource.year;
 
-                    // Filter out points from previous launches
-                    if (split_row[1] == transmitter.esn) raw_data.push(split_row);
-                });
+                    else if (parseInt(lastRow[2]) > parseInt(row[2]))
+                        year++;
 
-                // Process the data into usable variables
-                var year = transmitter.year; // Keep track of the point's year, as it is not in the raw data
-                raw_data.each(function(raw_point, i){
-                    // Increment year if the last waypoint's decimal date is larger than this
-                    if (i > 0 && parseFloat(raw_data[i-1][6]) > parseFloat(raw_data[i][6])) year++;
+                    var esn = row[1];
 
-                    var point = processed_data[i] = {
-                        latitude:  parseFloat(raw_point[8]),
-                        longitude: parseFloat(raw_point[7]),
-                        date:      moment("{0}/{1}/{2} {3}:{4}".format(year, raw_point[2], raw_point[3], raw_point[4], raw_point[5])),
-                        isLatest:  i === raw_data.length - 1,
-                        isFirst:   i === 0,
-                        previous:  processed_data[i-1],
-                        next:      undefined
-                    };
-
-                    point.latLng = L.latLng(point.latitude, point.longitude);
-                    if (!point.isFirst) point.previous.next = point;
-                    point.time_ago = moment.duration(current_time.diff(point.date));
-                });
-
-                // Analyse the data
-                processed_data.reverse(false).each(function(point, i) {
-                    /*
-                     *  Fill up launch date and last date
-                     */
-                    if (point.isFirst)       stats.launch_date = point.date;
-                    else if (point.isLatest) stats.last_date   = point.date;
-
-                    /*
-                     *  Calculate deltas from last point, if this is not the first
-                     */
-                    point.distance_delta = point.isFirst ? 0: point.latLng.distanceTo(point.previous.latLng)/1000;
-                    point.time_delta = point.isFirst ? moment.duration(0): moment.duration(point.date.diff(point.previous.date));
-                    point.average_speed  = point.isFirst ? 0: kph_to_knots(point.distance_delta/point.time_delta.asHours());
-
-                    if (point.average_speed > stats.maximum_speed.speed)
+                    if (_.contains(dataSource.esns, esn))
                     {
-                        stats.maximum_speed.speed = point.average_speed;
-                        stats.maximum_speed.point = point;
+                        // Create the array if it doesn't exist
+                        rawData[esn] = rawData[esn] ? rawData[esn] : [];
+                        rawData[esn].push({
+                            date: moment("{0}-{1}-{2} {3}:{4}".format(year, row[2], row[3], row[4], row[5])),
+                            latLng: L.latLng(row[8], row[7])
+                        });
                     }
 
-                    /*
-                     *  Increment global stats
-                     */
-                    stats.distance += point.distance_delta;
-                    stats.logged_duration.add(point.time_delta);
+                    lastRow = row;
+                })
 
-                    /*
-                     *  Calculate last 24h stats
-                     */
+                if(--sourcesWaiting == 0) displayData(rawData);
 
-                    // If this point was in the last 24h
-                    if (point.time_ago.asHours() <= 24)
-                    {
-                        stats.last_24h.distance += point.distance_delta;
-                    }
-                    // If the next point was in the last 24h
-                    else if (!point.isFirst && point.previous.time_ago.asHours() <= 24)
-                    {
-                        stats.last_24h.distance += (1-(24/point.time_ago.asHours()))*point.distance_delta;
-                    }
-                });
-                /*
-                 *  Calculate remaining stats
-                 */
-                stats.real_duration = moment.duration(current_time.diff(stats.launch_date));
-                stats.average_speed = kph_to_knots(stats.distance/stats.logged_duration.asHours());
-                stats.last_24h.average_speed = kph_to_knots(stats.last_24h.distance/24);
-
-                // Create markers
-                processed_data.each(function(point, i) {
-                    var pointMarker = L.marker(point.latLng, {
-                        // The marker will be a little boat if it's the latest point
-                        icon: (point.isLatest) ? icons.boat: icons.point
-                    });
-
-                    // Add marker to point object
-                    point.marker = pointMarker;
-
-                    // Add info to a popup
-                    pointMarker.bindPopup(
-                        '<b>Date:</b> ' + point.date.format("DD-MM-YYYY HH:mm") + '<br>' +
-                        (point.isFirst ? '': '<b>Average Speed:</b> ' + point.average_speed.round(2) + ' knots<br>') +
-                        '<b>Coordinates:</b> ' + point.latitude + '&#176;, ' + point.longitude + '&#176;'
-                    );
-
-                    // Add point to polyline and data layer
-                    polyline.addLatLng(point.latLng);
-                    data_layer.addLayer(pointMarker);
-                });
-
-                // Add stats to the map
-                transmitter.html = '\
-                    <b>Launch date:</b> ' + stats.launch_date.format("DD-MM-YYYY HH:mm") + ' UTC<br> \
-                    <b>Last fix date:</b> ' + stats.last_date.format("DD-MM-YYYY HH:mm") + ' UTC<br> \
-                    <b>Days travelled:</b> ' + stats.real_duration.asDays().round(1) + '<br> \
-                    <b>Distance travelled:</b> ' + stats.distance.round() + ' km <br> \
-                    <b>Average speed</b> ' + stats.average_speed.round(2) + ' knots <br>\
-                    <b>Maximum speed</b> <span title="' + stats.maximum_speed.point.date.format("DD-MM-YYYY HH:mm") + '">' + stats.maximum_speed.speed.round(2) + '</span> knots \
-                    <hr> \
-                    <b>Distance travelled (last 24h):</b> ' + stats.last_24h.distance.round() + ' km <br> \
-                    <b>Average speed (last 24h)</b> ' + stats.last_24h.average_speed.round(2) + ' knots \
-                    ';
-
-                // If it is the default transmitter, add to map
-                if (transmitter.enabled)
-                {
-                    data_layer.addTo(map);
-                    visible_legend.update(transmitter.html);
-
-                    // Fit map to polyline bounds, always showing Lisbon
-                    var lisbon_latLng = L.latLng([38.726662, -9.155274]);
-                    var bounds = polyline.getBounds().extend(lisbon_latLng);
-                    map.fitBounds(bounds, {padding: [10, 10]});
-                }
-
-                // If it is the last transmitter, enable the transmitter selector
-                if (i == transmitters.length-1)
-                {
-                    data_layers.addTo(map);
-                    
-                    // Add the optional layers to a selection control
-                    L.control.layers(undefined, {
-                        "Administration Boundaries": admin_bounds,
-                        "Wind": wind
-                    }).addTo(map);
-                }
-            };
-        }(i, transmitter, polyline, data_layer),
-
-        onFailure: function() {
-            alert('There was an error loading the data...');
-        },
-
-        // Fix for Prototype sending more headers than it should
-        onCreate: function(response) {
-            var t = response.transport; 
-            t.setRequestHeader = t.setRequestHeader.wrap(function(original, k, v) { 
-                if (/^(accept|accept-language|content-language)$/i.test(k)) 
-                    return original(k, v); 
-                if (/^content-type$/i.test(k) && 
-                    /^(application\/x-www-form-urlencoded|multipart\/form-data|text\/plain)(;.+)?$/i.test(v)) 
-                    return original(k, v); 
-                return; 
-            });
-        }
+            })
+            .go();
     });
 }
 
-// Change legend when the layer is changed
-map.on('baselayerchange', function(e) {
-    for (var i = 0; i < transmitters.length; ++i) {
-        var transmitter = transmitters[i];
-
-        if (e.name == transmitter.name) {
-            visible_legend.update(transmitter.html);
+/**
+ * Takes a raw list of points and returns a list of points
+ * with statistics for each one, and global stats for the data set.
+ */
+function processPoints(dataPoints)
+{
+    var processedPoints = [];
+    var stats = {
+        launchDate: 0, // moment()
+        lastDate: 0, // moment()
+        duration: moment.duration(0), // moment.duration()
+        distance: 0, // meters
+        averageSpeed: 0, // km/h
+        maximumSpeed: {
+            speed: 0, // km/h
+            point: undefined // dataPoint
         }
     }
-});
+
+    // Sort the points by date
+    dataPoints = _.sortBy(dataPoints, 'date');
+
+    stats.launchDate = dataPoints[0].date;
+    stats.lastDate = _.last(dataPoints).date;
+    stats.duration = moment.duration(stats.lastDate.diff(stats.launchDate));
+
+    var previousPoint = null;
+    _.each(dataPoints, function(point) {
+        point.speed = 0;
+        point.deltaDistance = null;
+
+        if (previousPoint)
+        {
+            point.deltaDistance = point.latLng.distanceTo(previousPoint.latLng)/1000;
+            point.speed = kph_to_knots(point.deltaDistance /
+            (point.date.diff(previousPoint.date, 'seconds') / 3600));
+
+            stats.distance += point.deltaDistance;
+        }
+
+        if (point.speed > stats.maximumSpeed.speed) {
+            stats.maximumSpeed.speed = point.speed;
+            stats.maximumSpeed.point = point;
+        }
+
+        if (point.deltaDistance !== 0)
+            processedPoints.push(point); // Ignore overlapped points or
+                                         // points with the same time and date
+
+        previousPoint = point;
+
+    });
+
+    stats.averageSpeed = kph_to_knots(stats.distance/1000 / stats.duration.asHours());
+
+    return {
+        points: processedPoints,
+        stats: stats
+    }
+}
+
+/**
+ * Displays the data in the map
+ */
+function displayData(rawData)
+{
+    // Map icons
+    var icons = {
+        // past location
+        point: L.icon({
+            iconUrl: 'img/point.svg',
+            iconSize: [9, 9]
+        }),
+
+        // current location
+        boat: L.icon({
+            iconUrl: 'img/boat.svg',
+            iconSize: [16, 16]
+        })
+    };
+
+    _.each(drifters, function(drifter) {
+        var dataPoints = [];
+
+        // Join the data for all the GPSs in this boat in the dataPoints array
+        _.each(drifter.esns, function(esn) {
+            dataPoints = dataPoints.concat(rawData[esn]);
+        });
+
+        // Filter all the points before the specified "from" date
+        dataPoints = _.filter(dataPoints, function(point) {
+            return point.date.isAfter(drifter.interval[0]);
+        })
+
+        // Filter all the points after the specified "to" date
+        if (drifter.interval[1] != 0) {
+            dataPoints = _.filter(dataPoints, function(point) {
+                return point.date < drifter.interval[1];
+            })
+        }
+
+        var processedPoints = processPoints(dataPoints);
+        drifter.stats = processedPoints.stats;
+
+        drifter.layer = L.featureGroup();
+        drifter.layer.drifter = drifter;
+        drifterSelector.addBaseLayer(drifter.layer, drifter.name);
+
+        var polyline = L.polyline([], {
+            color: 'white',
+            opacity: 0.2,
+            lineCap: 'butt',
+            weight: 2
+        });
+
+        polyline.addTo(drifter.layer);
+
+        _.each(processedPoints.points, function(point, i, points) {
+            var pointMarker = L.marker(point.latLng, {
+                // The marker will be a little boat if it's the latest point
+                icon: i == points.length-1 ? icons.boat: icons.point
+            });
+
+            polyline.addLatLng(point.latLng);
+            pointMarker.bindPopup(templates.popup(point));
+            pointMarker.addTo(drifter.layer);
+            point.marker = pointMarker;
+        });
+
+        // Add the polyline bounds to the drifter metadata
+        // The bounds always include Lisbon
+        drifter.bounds = polyline.getBounds().extend(L.latLng([38.726662, -9.155274]));
+
+        if (drifter.enabled)
+        {
+            drifterSelector.addTo(map);
+            enableDrifter(drifter);
+        }
+    });
+}
+
+/**
+ * Changes the enabled drifter
+ */
+function enableDrifter(drifter)
+{
+    _.each(drifters, function(d) {
+        if (d.layer)
+            map.removeLayer(d.layer);
+    });
+
+
+    map.addLayer(drifter.layer);
+}
+
+/**
+ * Loads the base map, including layers and attribution
+ */
+function loadMap()
+{
+    // Load tiles
+    var world = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '<a href="http://www.esri.com/">Esri</a>',
+        maxZoom: 9
+    });
+
+    var adminBounds = L.tileLayer('http://otile{s}.mqcdn.com/tiles/1.0.0/hyb/{z}/{x}/{y}.png', {
+        attribution: '<a href="http://www.mapquest.com/">MapQuest</a>',
+        subdomains: [1, 2, 3, 4],
+        maxZoom: 9,
+    });
+
+    var wind = L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png', {
+        attribution: '<a href="http://openweathermap.org">OpenWeatherMap</a>',
+        opacity: 0.5
+    });
+
+    map.addLayer(world);
+
+    L.control.layers(undefined, {
+        "Administration Boundaries": adminBounds,
+        "Wind": wind
+    }, {position: 'topleft'}).addTo(map);
+
+    map.fitBounds([[28.11, -80.74], [42.20, -9.54]]); // Show whole north atlantic ocean at first
+
+    var dataLayers = L.control.layers(undefined, undefined, {collapsed: false});
+
+    legend.onAdd = function (map) {
+        return L.DomUtil.create('div', 'info-box');
+    };
+    legend.update = function (html) {
+        this._container.innerHTML = html;
+    }
+
+    legend.addTo(map);
+    legend.update('Loading...');
+
+    // Change legend when the layer is changed
+    map.on('baselayerchange', function(e) {
+        legend.update(templates.legend(e.layer.drifter));
+        map.fitBounds(e.layer.drifter.bounds);
+    });
+
+    return map;
+}
+
+function main()
+{
+    loadMap();
+    loadData();
+}
+main();
 
 /*
- * Helper Functions
+ * Help functions/prototypes
 **/
 
 // String formatting
 if (!String.prototype.format) {
   String.prototype.format = function() {
     var args = arguments;
-    return this.replace(/{(\d+)}/g, function(match, number) { 
+    return this.replace(/{(\d+)}/g, function(match, number) {
       return typeof args[number] != 'undefined' ? args[number] : match;
     });
   };
 }
-
-// Round to decimal places
-Number.prototype.round = function(places) {
-  return !places ? Math.round(this): +(Math.round(this + "e+" + places)  + "e-" + places);
-};
 
 // km/h to knots
 function kph_to_knots(value)
