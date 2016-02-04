@@ -336,7 +336,7 @@ function loadMap()
     // Change legend when the layer is changed
     map.on('baselayerchange', function(e) {
         legend.update(templates.legend(e.layer.drifter));
-        map.fitBounds(e.layer.drifter.bounds);
+        map.fitBounds(e.layer.drifter.bounds, {padding: [200, 100]});
     });
 
     return map;
