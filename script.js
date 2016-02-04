@@ -113,7 +113,13 @@ function loadData()
                         // Create the array if it doesn't exist
                         rawData[esn] = rawData[esn] ? rawData[esn] : [];
                         rawData[esn].push({
-                            date: moment("{0}-{1}-{2} {3}:{4}".format(year, row[2], row[3], row[4], row[5])),
+                            date: moment({
+                                y: year,
+                                M: parseInt(row[2])-1, // Months are 0-11
+                                d: row[3],
+                                h: row[4],
+                                m: row[5]
+                            }),
                             latLng: L.latLng(row[8], row[7])
                         });
                     }
@@ -162,20 +168,22 @@ function processPoints(dataPoints)
         if (previousPoint)
         {
             point.deltaDistance = point.latLng.distanceTo(previousPoint.latLng)/1000;
-            point.speed = kph_to_knots(point.deltaDistance /
-            (point.date.diff(previousPoint.date, 'seconds') / 3600));
+            point.deltaTime = (point.date.diff(previousPoint.date, 'seconds') / 3600);
+            point.speed = kph_to_knots(point.deltaDistance / point.deltaTime);
 
             stats.distance += point.deltaDistance;
         }
+
+        if (point.deltaDistance === 0 || point.deltaTime === 0)
+            return; // Ignore overlapped points or
+                    // points with the same time and date
 
         if (point.speed > stats.maximumSpeed.speed) {
             stats.maximumSpeed.speed = point.speed;
             stats.maximumSpeed.point = point;
         }
 
-        if (point.deltaDistance !== 0)
-            processedPoints.push(point); // Ignore overlapped points or
-                                         // points with the same time and date
+        processedPoints.push(point);
 
         previousPoint = point;
 
@@ -216,6 +224,7 @@ function displayData(rawData)
         _.each(drifter.esns, function(esn) {
             dataPoints = dataPoints.concat(rawData[esn]);
         });
+
 
         // Filter all the points before the specified "from" date
         dataPoints = _.filter(dataPoints, function(point) {
