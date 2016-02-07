@@ -59,7 +59,7 @@ var drifterSelector = L.control.layers(undefined, undefined, {collapsed: false})
 // Templates
 var templates = {
     popup: _.template("<b>Date:</b> <%- date.format('YYYY-MM-DD HH:mm:ss') %> <br>" +
-        "<b>Average Speed:</b> <%- speed.toFixed(2) %> <br>" +
+        "<b>Average Speed:</b> <%- speed.toFixed(2) %> knots<br>" +
         "<b>Coordinates:</b> <%- latLng.lat %>&#176;, <%- latLng.lng %>&#176;"),
 
     legend: _.template(
@@ -69,7 +69,7 @@ var templates = {
         "<b>Last fix date:</b> <%- stats.lastDate.format('YYYY-MM-DD HH:mm:ss') %> <br>" +
         "<b>Days travelled:</b> <%- stats.duration.asDays().toFixed() %> <br>" +
         "<b>Distance travelled:</b> <%- stats.distance.toFixed() %> km<br>" +
-        "<b>Maximum speed:</b> <%- stats.maximumSpeed.speed.toFixed(2) %><br>")
+        "<b>Maximum speed:</b> <%- stats.maximumSpeed.speed.toFixed(2) %> knots<br>")
 }
 
 /**
