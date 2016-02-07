@@ -1,7 +1,6 @@
 /*jshint multistr: true */
 "use strict";
 
-
 // Data sources to be aggregated
 var dataSources = [
     {
@@ -33,8 +32,7 @@ var drifters = [
         name: 'WEST',
         description: 'Leva Portugal ao Mundo',
         esns: ['995664', '945770'],
-        interval: [moment('2016-01-27T08:00:00'), 0],
-        enabled: true
+        interval: [moment('2016-01-27T08:00:00'), 0]
     },
     {
         name: 'Charger',
@@ -43,6 +41,15 @@ var drifters = [
         interval: [moment('2014-05-30'), 0]
     }
 ]
+
+// Select the default drifter
+var defaultDrifter = drifters[0];
+_.each(drifters, function(drifter) {
+    if (drifter.name.toLowerCase() == window.location.hash.substring(1).toLowerCase())
+    {
+        defaultDrifter = drifter;
+    }
+})
 
 // Map globals
 var map = L.map('map');
@@ -267,13 +274,10 @@ function displayData(rawData)
 
         // Add the polyline bounds to the drifter metadata
         drifter.bounds = polyline.getBounds();
-
-        if (drifter.enabled)
-        {
-            drifterSelector.addTo(map);
-            enableDrifter(drifter);
-        }
     });
+
+    drifterSelector.addTo(map);
+    enableDrifter(defaultDrifter);
 }
 
 /**
