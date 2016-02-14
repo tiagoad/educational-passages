@@ -1,44 +1,18 @@
 /*jshint multistr: true */
 "use strict";
 
-// Data sources to be aggregated
-var dataSources = [
-    {
-        url: 'http://www.nefsc.noaa.gov/drifter/drift_ep_2014_1.dat',
-        year: 2014,
-        esns: ['995094']
-    },
-    {
-        url: 'http://www.nefsc.noaa.gov/drifter/drift_ep_2012_1.dat',
-        year: 2013,
-        esns: ['1236780']
-    },
-    {
-        url: 'http://www.nefsc.noaa.gov/drifter/drift_ep_2013_2.dat',
-        year: 2013,
-        esns: ['995664']
-    },
-    {
-        url: 'http://www.nefsc.noaa.gov/drifter/drift_ep_2016_1.dat',
-        year: 2016,
-        esns: ['945770']
-    }
-];
-
 // Physical drifters
 // Each object will also have a "layer" key
 var drifters = [
     {
         name: 'WEST',
         description: 'Leva Portugal ao Mundo',
-        esns: ['995664', '945770'],
-        interval: [moment('2016-01-27T08:00:00'), 0]
+        url: 'https://ttsda.cc/educational-passages/WEST.dat'
     },
     {
         name: 'Charger',
         description: '',
-        esns: ['995094', '1236780'],
-        interval: [moment('2014-05-30'), 0]
+        url: 'https://ttsda.cc/educational-passages/Charger.dat'
     }
 ]
 
@@ -73,76 +47,37 @@ var templates = {
 }
 
 /**
- * Loads the data from NOAA
+ * Loads the data from the server
  */
-function loadData()
+function downloadData(drifter, callback)
 {
-    // Object holding a key for each ESN.
-    // The value is a list of objects with the following keys
-    // timestamp (int)
-    // latLng (L.latLng)
-    var rawData = {};
+    reqwest({
+        url: drifter.url
+    })
+    .then(function(res) {
+        var response = res.response;
+        var points = []
 
-    // Number of sources to be loaded
-    var sourcesWaiting = dataSources.length;
+        _.each(response.split('\n'), function(line) {
+            var row = line.split(' ');
 
-    _.each(dataSources, function(dataSource) {
-        /*
-         * Retrieve location data.
-         * I am using YQL as a proxy because the noaa server does not allow cross-server requests.
-        **/
-        // ID ESN MONTH DAY HOUR MINUTE DECIMAL_DATE LONGITUDE LATITUDE ? ?
-        var yqlQuery = 'SELECT * FROM csv WHERE url="' + dataSource.url + '"';
-        var yqlUrl = 'https://query.yahooapis.com/v1/public/yql?q=' + encodeURIComponent(yqlQuery) + '&format=json';
-
-        // Download data
-        aja()
-            .url(yqlUrl)
-            .on('success', function(json) {
-                var rows = json.query.results.row;
-
-                var lastRow;
-                var year;
-                _.each(rows, function(rawRow) {
-                    var row = rawRow.col0.replace(/\s+/g, ' ').replace(/(^\s|\s$)/g, '').split(' ');
-
-                    if (!lastRow || lastRow[0] != row[0])
-                        year = dataSource.year;
-
-                    else if (parseInt(lastRow[2]) > parseInt(row[2]))
-                        year++;
-
-                    var esn = row[1];
-
-                    if (_.contains(dataSource.esns, esn))
-                    {
-                        // Create the array if it doesn't exist
-                        rawData[esn] = rawData[esn] ? rawData[esn] : [];
-                        rawData[esn].push({
-                            date: moment({
-                                y: year,
-                                M: parseInt(row[2])-1, // Months are 0-11
-                                d: row[3],
-                                h: row[4],
-                                m: row[5]
-                            }),
-                            latLng: L.latLng(row[8], row[7])
-                        });
-                    }
-
-                    lastRow = row;
+            if (row.length >= 3) {
+                points.push({
+                    date: moment.unix(parseInt(row[0])),
+                    latLng: L.latLng(parseFloat(row[1]), parseFloat(row[2]))
                 })
+            }
+        })
 
-                if(--sourcesWaiting == 0) displayData(rawData);
+        var processed = processPoints(points);
 
-            })
-            .go();
+        callback(processed);
     });
 }
 
 /**
- * Takes a raw list of points and returns a list of points
- * with statistics for each one, and global stats for the data set.
+ * Takes a list of points (objects with date and latLng) and returns a list of
+ * points with statistics for each one, and global stats for the data set.
  */
 function processPoints(dataPoints)
 {
@@ -158,9 +93,6 @@ function processPoints(dataPoints)
             point: undefined // dataPoint
         }
     }
-
-    // Sort the points by date
-    dataPoints = _.sortBy(dataPoints, 'date');
 
     stats.launchDate = dataPoints[0].date;
     stats.lastDate = _.last(dataPoints).date;
@@ -190,7 +122,6 @@ function processPoints(dataPoints)
         }
 
         processedPoints.push(point);
-
         previousPoint = point;
 
     });
@@ -204,9 +135,9 @@ function processPoints(dataPoints)
 }
 
 /**
- * Displays the data in the map
+ * Displays a drifter on the map
  */
-function displayData(rawData)
+function loadDrifter(drifter)
 {
     // Map icons
     var icons = {
@@ -223,75 +154,56 @@ function displayData(rawData)
         })
     };
 
-    _.each(drifters, function(drifter) {
-        var dataPoints = [];
+    if (!drifter.data)
+        downloadData(drifter, function(data) {
+            drifter.data = data
+            drifter.stats = data.stats;
 
-        // Join the data for all the GPSs in this boat in the dataPoints array
-        _.each(drifter.esns, function(esn) {
-            dataPoints = dataPoints.concat(rawData[esn]);
-        });
-
-
-        // Filter all the points before the specified "from" date
-        dataPoints = _.filter(dataPoints, function(point) {
-            return point.date.isAfter(drifter.interval[0]);
-        })
-
-        // Filter all the points after the specified "to" date
-        if (drifter.interval[1] != 0) {
-            dataPoints = _.filter(dataPoints, function(point) {
-                return point.date < drifter.interval[1];
-            })
-        }
-
-        var processedPoints = processPoints(dataPoints);
-        drifter.stats = processedPoints.stats;
-
-        drifter.layer = L.featureGroup();
-        drifter.layer.drifter = drifter;
-        drifterSelector.addBaseLayer(drifter.layer, drifter.name);
-
-        var polyline = L.polyline([], {
-            color: 'white',
-            opacity: 0.2,
-            lineCap: 'butt',
-            weight: 2
-        });
-
-        polyline.addTo(drifter.layer);
-
-        _.each(processedPoints.points, function(point, i, points) {
-            var pointMarker = L.marker(point.latLng, {
-                // The marker will be a little boat if it's the latest point
-                icon: i == points.length-1 ? icons.boat: icons.point
+            var polyline = L.polyline([], {
+                color: 'white',
+                opacity: 0.2,
+                lineCap: 'butt',
+                weight: 2
             });
 
-            polyline.addLatLng(point.latLng);
-            pointMarker.bindPopup(templates.popup(point));
-            pointMarker.addTo(drifter.layer);
-            point.marker = pointMarker;
+            polyline.addTo(drifter.layer);
+
+            _.each(data.points, function(point, i, points) {
+                var pointMarker = L.marker(point.latLng, {
+                    // The marker will be a little boat if it's the latest point
+                    icon: i == points.length-1 ? icons.boat: icons.point
+                });
+
+                polyline.addLatLng(point.latLng);
+                pointMarker.bindPopup(templates.popup(point));
+                pointMarker.addTo(drifter.layer);
+                point.marker = pointMarker;
+            });
+
+            // Add the polyline bounds to the drifter metadata
+            drifter.bounds = polyline.getBounds();
+
+            enableDrifter(drifter);
         });
-
-        // Add the polyline bounds to the drifter metadata
-        drifter.bounds = polyline.getBounds();
-    });
-
-    drifterSelector.addTo(map);
-    enableDrifter(defaultDrifter);
+        else {
+            enableDrifter(drifter);
+        }
 }
 
 /**
- * Changes the enabled drifter
+ * Shows the drifter stats and zooms the map around the path
  */
 function enableDrifter(drifter)
 {
     _.each(drifters, function(d) {
-        if (d.layer)
+        if (d == drifter)
+            drifter.layer.addTo(map);
+        else
             map.removeLayer(d.layer);
-    });
-
-
-    map.addLayer(drifter.layer);
+    })
+    
+    legend.update(templates.legend(drifter));
+    map.fitBounds(drifter.bounds, {padding: [200, 100]});
 }
 
 /**
@@ -337,19 +249,26 @@ function loadMap()
     legend.addTo(map);
     legend.update('Loading...');
 
-    // Change legend when the layer is changed
-    map.on('baselayerchange', function(e) {
-        legend.update(templates.legend(e.layer.drifter));
-        map.fitBounds(e.layer.drifter.bounds, {padding: [200, 100]});
+    // Create the layers for each drifter
+    _.each(drifters, function(drifter) {
+        drifter.layer = L.featureGroup();
+        drifter.layer.drifter = drifter;
+        drifterSelector.addBaseLayer(drifter.layer, drifter.name);
     });
 
+    // Download data and change legend when the layer is changed
+    map.on('baselayerchange', function(e) {
+        loadDrifter(e.layer.drifter);
+    });
+
+    drifterSelector.addTo(map);
+    loadDrifter(defaultDrifter);
     return map;
 }
 
 function main()
 {
     loadMap();
-    loadData();
 }
 main();
 

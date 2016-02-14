@@ -1,0 +1,37 @@
+{
+    "sources": [
+        {
+            "url": "http://www.nefsc.noaa.gov/drifter/drift_ep_2014_1.dat",
+            "year": 2014,
+            "esns": [995094]
+        },
+        {
+            "url": "http://www.nefsc.noaa.gov/drifter/drift_ep_2012_1.dat",
+            "year": 2013,
+            "esns": [1236780]
+        },
+        {
+            "url": "http://www.nefsc.noaa.gov/drifter/drift_ep_2016_1.dat",
+            "year": 2016,
+            "esns": [945770]
+        },
+        {
+            "url": "http://www.nefsc.noaa.gov/drifter/drift_ep_2013_2.dat",
+            "year": 2013,
+            "esns": [995664]
+        }
+    ],
+
+    "drifters": [
+        {
+            "name": "Charger",
+            "esns": [995094, 1236780],
+            "from": 1401408000
+        },
+        {
+            "name": "WEST",
+            "esns": [945770, 995664],
+            "from": 1453881960
+        }
+    ]
+}

@@ -1,11 +1,13 @@
 pages:
-  stage: deploy
   script:
-  - mkdir .public
-  - cp -r * .public
-  - mv .public public
+  - mkdir public
+  - cp -r html/* public
   artifacts:
     paths:
     - public
-  only:
-    - gh-pages
+
+go:
+  image: golang:latest
+  script:
+  - cd go
+  - ./run.sh
