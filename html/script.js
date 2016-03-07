@@ -201,7 +201,7 @@ function enableDrifter(drifter)
         else
             map.removeLayer(d.layer);
     })
-    
+
     legend.update(templates.legend(drifter));
     map.fitBounds(drifter.bounds, {padding: [200, 100]});
 }
@@ -214,13 +214,13 @@ function loadMap()
     // Load tiles
     var world = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         attribution: '<a href="http://www.esri.com/">Esri</a>',
-        maxZoom: 9
+        maxZoom: 13
     });
 
     var adminBounds = L.tileLayer('http://otile{s}.mqcdn.com/tiles/1.0.0/hyb/{z}/{x}/{y}.png', {
         attribution: '<a href="http://www.mapquest.com/">MapQuest</a>',
         subdomains: [1, 2, 3, 4],
-        maxZoom: 9,
+        maxZoom: 13,
     });
 
     var wind = L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png', {
