@@ -1,4 +1,5 @@
 pages:
+  stage: deploy
   script:
   - mkdir public
   - cp -r html/* public
@@ -7,6 +8,7 @@ pages:
     - public
 
 go:
+  stage: test
   image: golang:latest
   script:
   - cd go
